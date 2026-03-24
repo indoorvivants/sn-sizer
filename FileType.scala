@@ -9,12 +9,14 @@ enum FileType:
 object FileType:
   def detect(ds: BinaryFile): FileType =
     ds.withRestore:
-      val x = CommonParsers.uint32()(using Endianness.LITTLE, ds)
-      if x == 0xfeedfacfL then MachO
-      else if x == 0x7f454c46 then ELF
+      lazy val littleEndian =
+        ds.withRestore(CommonParsers.uint32()(using Endianness.LITTLE, ds))
+      lazy val bigEndian = CommonParsers.uint32()(using Endianness.BIG, ds)
+      if littleEndian == 0xfeedfacfL then MachO
+      else if bigEndian == 0x7f454c46 then ELF
       else
         Unknown(
-          x.toHexString
+          bigEndian.toHexString
         )
       end if
 end FileType

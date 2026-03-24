@@ -5,7 +5,6 @@ import Endianness.LITTLE
 import Endianness.BIG
 import java.io.RandomAccessFile
 import java.nio.channels.Channels
-// import MachO.*
 
 sealed trait Endianness extends Product with Serializable
 object Endianness:

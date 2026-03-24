@@ -33,25 +33,38 @@ end CLI
 
   val ftype = FileType.detect(bf)
 
-  if ftype != FileType.MachO then
-    sys.error(s"Only 64-bit MachO files are supported! Detected: ${ftype}")
+  def demangled(sizes: Map[String, Long]): Map[String, Long] =
+    sizes.map: (name, size) =>
+      if name.startsWith("__S") && ftype == FileType.MachO then
+        val stripped = name.stripPrefix("_")
+        Try(Demangler.demangle(stripped)).fold(
+          _ =>
+            scribe.warn(s"Failed to demangle symbol ${stripped}")
+            (name, size)
+          ,
+          s => (s, size)
+        )
+      else if name.startsWith("_S") && ftype == FileType.ELF then
+        Try(Demangler.demangle(name)).fold(
+          _ =>
+            scribe.warn(s"Failed to demangle symbol ${name}")
+            (name, size)
+          ,
+          s => (s, size)
+        )
+      else if name.startsWith("_Z") || name.startsWith("__Z") then
+        (s"c++.$name", size)
+      else (name, size)
 
   val indiv =
-    for
-      parsed = MachO.parse(bf)
-      sizes = parsed.sizes
-      case (scalaSymbol, size) <- sizes
-        .filter(_._1.startsWith("__S"))
-        .toList
-        .sortBy(s => (s._2 * -1, s._1))
-      demangled = Try(Demangler.demangle(scalaSymbol.stripPrefix("_")))
-      _ = demangled.failed.toOption.foreach(_ =>
-        scribe.warn(
-          s"Failed to demangle symbol ${scalaSymbol.stripPrefix("_")}"
+    demangled(
+      if ftype == FileType.MachO then MachO.parse(bf).sizes
+      else if ftype == FileType.ELF then ELF.parse(bf).sizes
+      else
+        sys.error(
+          s"Only 64-bit MachO and ELF files are supported! Detected: ${ftype}"
         )
-      )
-      symbol <- demangled.toOption
-    yield (symbol, size)
+    )
 
   cli match
     case CLI.Serve(filename, port) =>

@@ -62,16 +62,19 @@
                 align-items: center;
                 gap: 8px;
             }
-            input[type="range"] {
-                width: 100px;
-                accent-color: #378add;
-            }
-            #depth-out,
-            #minsize-out {
+            #filter-prefix {
+                font-family: var(--font-mono);
                 font-size: 12px;
-                font-weight: 500;
-                min-width: 40px;
+                background: var(--color-background-primary);
                 color: var(--color-text-primary);
+                border: 0.5px solid var(--color-border-secondary);
+                border-radius: 4px;
+                padding: 3px 8px;
+                width: 220px;
+                outline: none;
+            }
+            #filter-prefix::placeholder {
+                color: var(--color-text-secondary);
             }
             #breadcrumb {
                 font-size: 12px;
@@ -122,29 +125,13 @@
         <h2 id="filename"></h2>
         <div id="controls">
             <label
-                >depth
+                >prefix filter
                 <input
-                    type="range"
-                    id="depth"
-                    min="1"
-                    max="6"
-                    value="3"
-                    step="1"
+                    type="text"
+                    id="filter-prefix"
+                    placeholder="e.g. scala.collection"
                 />
-                <span id="depth-out">3</span></label
-            >
-            <label
-                >min size
-                <input
-                    type="range"
-                    id="minsize"
-                    min="0"
-                    max="23736"
-                    value="500"
-                    step="500"
-                />
-                <span id="minsize-out">500</span></label
-            >
+            </label>
         </div>
         <div id="breadcrumb"></div>
         <div id="treemap-wrap">
@@ -217,7 +204,9 @@
                 return b + " B";
             }
 
-            function buildTree(symbols, maxDepth, minSize) {
+            function buildTree(symbols) {
+                const maxDepth = Infinity;
+                const minSize = 0;
                 const root = { name: "root", children: {}, size: 0 };
                 for (const [sym, size] of symbols) {
                     const dotPart = sym.replace(/\(.*/, "");
@@ -269,52 +258,72 @@
                 };
             }
 
-            let focusNode = null;
+            // colorMap is stable across renders for a given dataset so root
+            // nodes always keep the same colour.
+            let colorMap = {};
 
+            // currentNode is a node from the full tree (returned by buildTree).
+            // ancestry is the stack of ancestors for breadcrumb navigation.
+            let currentNode = null;
+            let ancestry = [];
+
+            function getActiveData() {
+                const pfx = document
+                    .getElementById("filter-prefix")
+                    .value.trim();
+                return pfx
+                    ? RAW.filter(([sym]) => {
+                          const dot = sym.replace(/\(.*/, "");
+                          return dot === pfx || dot.startsWith(pfx + ".");
+                      })
+                    : RAW;
+            }
+
+            function rebuildRoot() {
+                const tree = buildTree(getActiveData());
+                // Assign stable colours to top-level nodes.
+                colorMap = {};
+                (tree.children || []).forEach(
+                    (c, i) => (colorMap[c.name] = RAMPS[i % RAMPS.length]),
+                );
+                currentNode = tree;
+                ancestry = [];
+            }
+
+            function getColor(nodeName, depth, lightIdx) {
+                const ramp = colorMap[nodeName] || RAMPS[0];
+                const idx = Math.min(depth, ramp.length - 1);
+                return ramp[lightIdx !== undefined ? lightIdx : idx];
+            }
+
+            // Render one level: the direct children of currentNode as flat tiles.
+            // Each child is treated as a leaf for layout (sized by totalSize),
+            // so clicking drills into it.
             function render() {
-                const maxDepth = +document.getElementById("depth").value;
-                const minSize = +document.getElementById("minsize").value;
-                document.getElementById("depth-out").textContent = maxDepth;
-                document.getElementById("minsize-out").textContent =
-                    fmtBytes(minSize);
-
                 const wrap = document.getElementById("treemap-wrap");
                 const W = wrap.clientWidth || 700;
                 const H = Math.max(400, Math.round(W * 0.6));
                 const svg = d3.select("#tm").attr("width", W).attr("height", H);
                 svg.selectAll("*").remove();
 
-                const tree = buildTree(RAW, maxDepth, minSize);
-                let rootNode = tree;
-                if (focusNode) {
-                    const path = (focusNode.fullPath || focusNode.name).split(
-                        ".",
-                    );
-                    const prefix = path.join(".") + ".";
-                    const filtered = RAW.filter(([sym]) => {
-                        const dot = sym.replace(/\(.*/, "");
-                        return dot === path.join(".") || dot.startsWith(prefix);
-                    });
-                    if (filtered.length > 0) {
-                        const sub = buildTree(
-                            filtered,
-                            maxDepth + path.length,
-                            0,
-                        );
-                        // navigate into the sub-tree at the focus path
-                        let n = sub;
-                        for (const p of path) {
-                            const ch = (n.children || []).find(
-                                (c) => c.name === p,
-                            );
-                            if (!ch) break;
-                            n = ch;
-                        }
-                        rootNode = n;
-                    }
-                }
+                const children = currentNode.children || [];
+
+                // Build a flat D3 hierarchy: root with one level of children.
+                // Each child's value is its totalSize so relative areas are correct.
+                const flatRoot = {
+                    name: currentNode.name,
+                    children: children.map((c) => ({
+                        name: c.name,
+                        fullPath: c.fullPath,
+                        totalSize: c.totalSize,
+                        hasChildren: !!(c.children && c.children.length),
+                        _ref: c,
+                        value: c.totalSize,
+                    })),
+                };
+
                 const hier = d3
-                    .hierarchy(rootNode)
+                    .hierarchy(flatRoot)
                     .sum((d) => d.value || 0)
                     .sort((a, b) => b.value - a.value);
 
@@ -322,36 +331,17 @@
                     .treemap()
                     .size([W, H])
                     .paddingInner(2)
-                    .paddingTop(18)
                     .paddingOuter(3)
                     .round(true)(hier);
 
-                const topPkgs = [
-                    ...new Set(
-                        hier.leaves().map((d) => {
-                            let n = d;
-                            while (n.depth > 1 && n.parent) n = n.parent;
-                            return n.data.name;
-                        }),
-                    ),
-                ];
-                const colorMap = {};
-                topPkgs.forEach(
-                    (p, i) => (colorMap[p] = RAMPS[i % RAMPS.length]),
-                );
-
-                function getColor(d, lightIdx) {
-                    let n = d;
-                    while (n.depth > 1 && n.parent) n = n.parent;
-                    const ramp = colorMap[n.data.name] || RAMPS[0];
-                    const depthRatio = Math.min(d.depth / (maxDepth + 1), 1);
-                    const idx = Math.round(depthRatio * (ramp.length - 1));
-                    return ramp[lightIdx !== undefined ? lightIdx : idx];
-                }
+                // Determine the top-level colour key for each tile.
+                // If we are at root level the tile itself is the top-level node.
+                // If we are deeper, inherit the colour from the ancestry root.
+                const topName = ancestry.length > 0 ? ancestry[0].name : null;
 
                 const cell = svg
                     .selectAll("g")
-                    .data(hier.descendants().filter((d) => d.depth > 0))
+                    .data(hier.children || [])
                     .enter()
                     .append("g")
                     .attr("transform", (d) => `translate(${d.x0},${d.y0})`);
@@ -359,14 +349,27 @@
                 cell.append("rect")
                     .attr("width", (d) => Math.max(0, d.x1 - d.x0))
                     .attr("height", (d) => Math.max(0, d.y1 - d.y0))
-                    .attr("fill", (d) => getColor(d, d.children ? 1 : 2))
-                    .attr("stroke", (d) => getColor(d, 4))
+                    .attr("fill", (d) => {
+                        const name = topName || d.data.name;
+                        const depth = ancestry.length;
+                        return getColor(
+                            name,
+                            depth,
+                            d.data.hasChildren ? 1 : 2,
+                        );
+                    })
+                    .attr("stroke", (d) => {
+                        const name = topName || d.data.name;
+                        return getColor(name, ancestry.length, 4);
+                    })
                     .attr("stroke-width", 0.5)
-                    .style("cursor", "pointer")
+                    .style("cursor", (d) =>
+                        d.data.hasChildren ? "pointer" : "default",
+                    )
                     .on("click", (e, d) => {
-                        // ensure fullPath is set even on synthetic root nodes
-                        if (!d.data.fullPath) d.data.fullPath = d.data.name;
-                        focusNode = d.data;
+                        if (!d.data.hasChildren) return;
+                        ancestry.push(currentNode);
+                        currentNode = d.data._ref;
                         updateBreadcrumb();
                         render();
                     })
@@ -376,7 +379,7 @@
                         tt.style.display = "block";
                         tt.style.left = e.clientX - rect.left + 12 + "px";
                         tt.style.top = e.clientY - rect.top - 10 + "px";
-                        tt.innerHTML = `<div class="tt-name">${d.data.fullPath || d.data.name}</div><div class="tt-size">${fmtBytes(d.data.totalSize || d.data.value || 0)}</div>`;
+                        tt.innerHTML = `<div class="tt-name">${d.data.fullPath || d.data.name}</div><div class="tt-size">${fmtBytes(d.data.totalSize || 0)}</div>`;
                     })
                     .on("mouseleave", () => {
                         document.getElementById("tooltip").style.display =
@@ -390,12 +393,15 @@
                 labelCells
                     .append("text")
                     .attr("x", 5)
-                    .attr("y", (d) =>
-                        d.children ? 15 : Math.min(17, (d.y1 - d.y0) / 2 + 4),
+                    .attr("y", (d) => Math.min(17, (d.y1 - d.y0) / 2 + 4))
+                    .attr("font-size", 12)
+                    .attr("font-weight", (d) =>
+                        d.data.hasChildren ? 600 : 400,
                     )
-                    .attr("font-size", (d) => (d.children ? 13 : 12))
-                    .attr("font-weight", (d) => (d.children ? 600 : 400))
-                    .attr("fill", (d) => getColor(d, 6))
+                    .attr("fill", (d) => {
+                        const name = topName || d.data.name;
+                        return getColor(name, ancestry.length, 6);
+                    })
                     .attr("pointer-events", "none")
                     .text((d) => {
                         const w = d.x1 - d.x0;
@@ -407,72 +413,50 @@
                     });
 
                 labelCells
-                    .filter((d) => d.children && d.y1 - d.y0 > 32)
-                    .append("text")
-                    .attr("x", 5)
-                    .attr("y", 28)
-                    .attr("font-size", 11)
-                    .attr("fill", (d) => getColor(d, 5))
-                    .attr("pointer-events", "none")
-                    .text((d) =>
-                        fmtBytes(d.data.totalSize || d.data.value || 0),
-                    );
-
-                labelCells
-                    .filter((d) => !d.children && d.y1 - d.y0 > 32)
+                    .filter((d) => d.y1 - d.y0 > 32)
                     .append("text")
                     .attr("x", 5)
                     .attr("y", (d) => Math.min(30, (d.y1 - d.y0) / 2 + 18))
                     .attr("font-size", 11)
-                    .attr("fill", (d) => getColor(d, 5))
+                    .attr("fill", (d) => {
+                        const name = topName || d.data.name;
+                        return getColor(name, ancestry.length, 5);
+                    })
                     .attr("pointer-events", "none")
-                    .text((d) =>
-                        fmtBytes(d.data.totalSize || d.data.value || 0),
-                    );
+                    .text((d) => fmtBytes(d.data.totalSize || 0));
             }
 
             function updateBreadcrumb() {
                 const bc = document.getElementById("breadcrumb");
-                if (!focusNode || focusNode.name === "root") {
+                if (ancestry.length === 0) {
                     bc.innerHTML = "";
                     return;
                 }
-                bc.innerHTML =
-                    '<span onclick="focusNode=null;updateBreadcrumb();render()">root</span> / ' +
-                    (focusNode.fullPath || focusNode.name)
-                        .split(".")
-                        .map((p, i, arr) => {
-                            const path = arr.slice(0, i + 1).join(".");
-                            if (i === arr.length - 1)
-                                return `<strong>${p}</strong>`;
-                            return `<span onclick="focusToPath('${path}')">${p}</span>`;
-                        })
-                        .join(" / ");
+                const parts = ancestry.map((node, i) => {
+                    const label =
+                        node.name === "root"
+                            ? "root"
+                            : (node.fullPath || node.name).split(".").pop();
+                    return `<span onclick="navigateToAncestor(${i})">${label}</span>`;
+                });
+                const currentLabel = `<strong>${(currentNode.fullPath || currentNode.name).split(".").pop()}</strong>`;
+                bc.innerHTML = [...parts, currentLabel].join(" / ");
             }
 
-            window.focusToPath = function (path) {
-                function find(node, parts) {
-                    if (!parts.length) return node;
-                    const ch = (node.children || []).find(
-                        (c) => c.name === parts[0],
-                    );
-                    return ch ? find(ch, parts.slice(1)) : null;
-                }
-                const tree = buildTree(
-                    RAW,
-                    +document.getElementById("depth").value,
-                    +document.getElementById("minsize").value,
-                );
-                const found = find(tree, path.split("."));
-                if (found) {
-                    focusNode = found;
-                    updateBreadcrumb();
-                    render();
-                }
+            window.navigateToAncestor = function (i) {
+                currentNode = ancestry[i];
+                ancestry = ancestry.slice(0, i);
+                updateBreadcrumb();
+                render();
             };
 
-            document.getElementById("depth").oninput = render;
-            document.getElementById("minsize").oninput = render;
+            document.getElementById("filter-prefix").oninput = function () {
+                rebuildRoot();
+                updateBreadcrumb();
+                render();
+            };
+
+            rebuildRoot();
             render();
             window.addEventListener("resize", render);
         </script>
