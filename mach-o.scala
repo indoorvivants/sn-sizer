@@ -68,7 +68,6 @@ object MachO:
           case s @ Load.Symtab(symoff, nsyms, stroff, strsize) =>
             s
         .foreach: s =>
-
           ds.withRestore:
             ds.skipNBytes(s.symoff)
             for _ <- 0 until s.nsyms.toInt do nlists += NList.parse()

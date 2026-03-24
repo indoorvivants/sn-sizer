@@ -31,24 +31,27 @@ end CLI
 
   import macho.*
 
+  val ftype = FileType.detect(bf)
+
+  if ftype != FileType.MachO then
+    sys.error(s"Only 64-bit MachO files are supported! Detected: ${ftype}")
+
   val indiv =
-    if scalanative.meta.LinktimeInfo.isMac then
-      for
-        parsed = MachO.parse(bf)
-        sizes = parsed.sizes
-        case (scalaSymbol, size) <- sizes
-          .filter(_._1.startsWith("__S"))
-          .toList
-          .sortBy(s => (s._2 * -1, s._1))
-        demangled = Try(Demangler.demangle(scalaSymbol.stripPrefix("_")))
-        _ = demangled.failed.toOption.foreach(_ =>
-          scribe.warn(
-            s"Failed to demangle symbol ${scalaSymbol.stripPrefix("_")}"
-          )
+    for
+      parsed = MachO.parse(bf)
+      sizes = parsed.sizes
+      case (scalaSymbol, size) <- sizes
+        .filter(_._1.startsWith("__S"))
+        .toList
+        .sortBy(s => (s._2 * -1, s._1))
+      demangled = Try(Demangler.demangle(scalaSymbol.stripPrefix("_")))
+      _ = demangled.failed.toOption.foreach(_ =>
+        scribe.warn(
+          s"Failed to demangle symbol ${scalaSymbol.stripPrefix("_")}"
         )
-        symbol <- demangled.toOption
-      yield (symbol, size)
-    else sys.error("At the moment only MacOS is supported!")
+      )
+      symbol <- demangled.toOption
+    yield (symbol, size)
 
   cli match
     case CLI.Serve(filename, port) =>
