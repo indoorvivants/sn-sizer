@@ -34,27 +34,29 @@ end CLI
   val ftype = FileType.detect(bf)
 
   def demangled(sizes: Map[String, Long]): Map[String, Long] =
-    sizes.map: (name, size) =>
-      if name.startsWith("__S") && ftype == FileType.MachO then
-        val stripped = name.stripPrefix("_")
-        Try(Demangler.demangle(stripped)).fold(
-          _ =>
-            scribe.warn(s"Failed to demangle symbol ${stripped}")
-            (name, size)
-          ,
-          s => (s, size)
-        )
-      else if name.startsWith("_S") && ftype == FileType.ELF then
-        Try(Demangler.demangle(name)).fold(
-          _ =>
-            scribe.warn(s"Failed to demangle symbol ${name}")
-            (name, size)
-          ,
-          s => (s, size)
-        )
-      else if name.startsWith("_Z") || name.startsWith("__Z") then
-        (s"c++.$name", size)
-      else (name, size)
+    sizes
+      .filter(_._2 > 0)
+      .map: (name, size) =>
+        if name.startsWith("__S") && ftype == FileType.MachO then
+          val stripped = name.stripPrefix("_")
+          Try(Demangler.demangle(stripped)).fold(
+            _ =>
+              scribe.warn(s"Failed to demangle symbol ${stripped}")
+              (name, size)
+            ,
+            s => (s, size)
+          )
+        else if name.startsWith("_S") && ftype == FileType.ELF then
+          Try(Demangler.demangle(name)).fold(
+            _ =>
+              scribe.warn(s"Failed to demangle symbol ${name}")
+              (name, size)
+            ,
+            s => (s, size)
+          )
+        else if name.startsWith("_Z") || name.startsWith("__Z") then
+          (s"<C++>.$name", size)
+        else ("<C>." + name, size)
 
   val indiv =
     demangled(

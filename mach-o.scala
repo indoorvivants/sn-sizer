@@ -96,24 +96,26 @@ object MachO:
       .groupBy(_.n_sect)
       .foreach: nl =>
         val sectIdx = nl._1 - 1
-        val section = sections(sectIdx)
-        val sorted = nl._2.sortBy(_.n_value)
-        sorted
-          .sliding(2)
-          .foreach:
-            case prev :: next :: Nil =>
-              val size = next.n_value - prev.n_value
+        sections
+          .get(sectIdx)
+          .foreach: section =>
+            val sorted = nl._2.sortBy(_.n_value)
+            sorted
+              .sliding(2)
+              .foreach:
+                case prev :: next :: Nil =>
+                  val size = next.n_value - prev.n_value
+                  stringTable
+                    .get(prev.n_un.toInt)
+                    .foreach: name =>
+                      sizes += name -> size
+
+            sorted.lastOption.foreach: last =>
+              val size = section.offset + section.size - last.n_value
               stringTable
-                .get(prev.n_un.toInt)
+                .get(last.n_un.toInt)
                 .foreach: name =>
                   sizes += name -> size
-
-        sorted.lastOption.foreach: last =>
-          val size = section.offset + section.size - last.n_value
-          stringTable
-            .get(last.n_un.toInt)
-            .foreach: name =>
-              sizes += name -> size
 
     new MachO(header, segs, sizes.result())
   end parse

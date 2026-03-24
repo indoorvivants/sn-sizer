@@ -70,7 +70,6 @@ object ELF:
       val strings =
         val builder = Map.newBuilder[Int, String]
         ds.withRestore:
-          println(strTableSection)
           ds.seek(strTableSection.sh_offset)
           val strTable = ds.readNBytes(strTableSection.sh_size.toInt)
           var i = 0
@@ -91,8 +90,6 @@ object ELF:
       ds.withRestore:
         ds.seek(symtab.sh_offset)
         val entries = symtab.sh_size.toInt / 24
-        println(entries)
-        println(strings.size)
 
         for i <- 0 until entries do
           val st_name = uint32()
