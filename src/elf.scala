@@ -15,11 +15,10 @@ case class Section(
     sh_link: Int,
     sh_size: UnsignedInt
 )
-case class ELF(header: Header, sizes: Map[String, Long])
 
 object ELF:
   import CommonParsers.*
-  def parse(ds: BinaryFile): ELF =
+  def parse(ds: BinaryFile) =
     implicit val stream: BinaryFile = ds
 
     val magic = uint32()(using Endianness.BIG, stream)
@@ -102,7 +101,7 @@ object ELF:
           strings.get(st_name.toInt).foreach(name => sizes += (name -> st_size))
         end for
 
-    ELF(Header(), sizes.result())
+    SizeReport(sizes.result())
   end parse
 
   def readSectionHeaders(

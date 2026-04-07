@@ -6,18 +6,18 @@ import java.nio.channels.Channels
 import MachO.*
 import scala.collection.mutable.Builder
 
-case class MachO private (
-    header: Header,
-    loadCommands: List[Load],
-    sizes: Map[String, Long]
-)
+// case class MachO private (
+//     header: Header,
+//     loadCommands: List[Load],
+//     sizes: Map[String, Long]
+// )
 
 import sizemap.*
 import CommonParsers.*
 
 object MachO:
 
-  def parse(ds: BinaryFile): MachO =
+  def parse(ds: BinaryFile): SizeReport =
     implicit val stream = ds
     val magic = uint32()(using Endianness.BIG, stream)
     val cputype = uint32()(using Endianness.BIG, stream)
@@ -117,7 +117,7 @@ object MachO:
                 .foreach: name =>
                   sizes += name -> size
 
-    new MachO(header, segs, sizes.result())
+    SizeReport(sizes.result())
   end parse
 
   final val MH_MAGIC = 0xfeedface

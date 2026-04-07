@@ -14,6 +14,7 @@ class Server(filename: String, data: Map[String, Long]):
       |const RAW = ${serialised
                     .map { case (k, v) => s"['$k', $v]" }
                     .mkString("[\n", ", \n", "\n]")};
+      |const SYMBOL_NAMES_TOTAL = ${data.keySet.map(_.getBytes().length).sum};
       """.stripMargin.trim)
     end dataJS
 

@@ -1,4 +1,4 @@
-//> using scala 3.8.2
+//> using scala 3.8.3
 //> using dep com.indoorvivants::decline-derive::0.3.6
 //> using dep "com.indoorvivants::sn-demangler-core::0.1.0"
 //> using dep com.outr::scribe::3.19.0
@@ -6,6 +6,7 @@
 //> using platform native
 //> using nativeLinking "-lstdc++"
 //> using nativeEmbedResources true
+//> using nativeVersion 0.5.11
 
 //> using publish.computeVersion git:tag
 //> using publish.developers "velvetbaldmime|Anton Sviridov|https://indoorvivants.com"

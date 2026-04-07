@@ -136,6 +136,7 @@
     <body>
         <h1>Scala Native binary size visualiser</h1>
         <h2 id="filename"></h2>
+        <h3>Total length of symbol names: <span id="symbols_total"></span></h3>
         <div id="controls">
             <label
                 >prefix filter
@@ -154,6 +155,8 @@
 
         <script>
             document.getElementById("filename").innerText = FILENAME;
+            document.getElementById("symbols_total").innerText =
+                fmtBytes(SYMBOL_NAMES_TOTAL);
             const RAMPS = [
                 [
                     "#E6F1FB",

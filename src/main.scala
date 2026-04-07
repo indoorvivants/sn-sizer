@@ -60,8 +60,8 @@ end CLI
 
   val indiv =
     demangled(
-      if ftype == FileType.MachO then MachO.parse(bf).sizes
-      else if ftype == FileType.ELF then ELF.parse(bf).sizes
+      if ftype == FileType.MachO then MachO.parse(bf).symbols
+      else if ftype == FileType.ELF then ELF.parse(bf).symbols
       else
         sys.error(
           s"Only 64-bit MachO and ELF files are supported! Detected: ${ftype}"
@@ -71,5 +71,5 @@ end CLI
   cli match
     case CLI.Serve(filename, port) =>
       Zone:
-        Server(filename.toString, indiv.toMap).serve(port)
+        Server(filename.getFileName().toString, indiv.toMap).serve(port)
 end hello
