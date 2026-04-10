@@ -6,7 +6,7 @@ import java.io.File
 import sizemap.BinaryFile
 import java.io.RandomAccessFile
 
-import com.indoorvivants.demangler.*
+import sn_demangler.*
 import scala.util.Try
 import java.io.FileWriter
 import scala.util.Using
